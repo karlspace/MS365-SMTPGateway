@@ -84,6 +84,13 @@ cert file and rebuilds the listeners on change (ACME renewal). **The cert must
 exist before the relay starts** — otherwise start the relay, provision the cert,
 then `docker compose restart relay` once.
 
+> **The private key must be readable by the relay's user (uid 1000).** The relay
+> runs unprivileged, so a `privkey.pem` written `600` and owned by a different
+> uid (e.g. nginx's 101, or an ACME dumper running as root) makes
+> `load_cert_chain` fail with *Permission denied* and TLS silently stays off
+> (logged at ERROR: `Failed to load SMTP TLS cert`). Ensure the writer chmods the
+> key so uid 1000 can read it, or run the dumper with a matching uid.
+
 **Traefik** stores ACME certs in `acme.json`; extract them to PEM into the volume
 with [`traefik-certs-dumper`](https://github.com/ldez/traefik-certs-dumper) as a
 sidecar writing `fullchain.pem` / `privkey.pem` into `smtp-relay-certs`.
