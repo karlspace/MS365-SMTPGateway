@@ -2,7 +2,11 @@ name: Build & Publish Docker Image
 
 on:
   push:
-    branches: ["main"]
+    # `workspace` is this fork's integration/default branch: it merges the
+    # upstream-PR-ready fix branches plus local-only changes and is what we
+    # build our images from. `main` is kept clean as the upstream-alignable
+    # base and is intentionally NOT built here.
+    branches: ["workspace"]
     # Note: version tags (v*) are handled by release.yml, which builds Docker
     # AND the Windows installer at the same version. Triggering here on tags too
     # would double-build the images, so it is intentionally omitted.
