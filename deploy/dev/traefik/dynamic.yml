@@ -1,0 +1,58 @@
+# Traefik v3.6 dynamic configuration (dev).
+
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/fullchain.pem
+        keyFile: /certs/privkey.pem
+  certificates:
+    - certFile: /certs/fullchain.pem
+      keyFile: /certs/privkey.pem
+
+http:
+  routers:
+    panel:
+      entryPoints: ["websecure"]
+      rule: "Host(`panel.smtp-relay.localhost`)"
+      tls: {}
+      service: ui
+      middlewares: ["login-ratelimit"]
+  services:
+    ui:
+      loadBalancer:
+        servers:
+          - url: "http://ui:8000"
+  middlewares:
+    login-ratelimit:
+      rateLimit:
+        average: 20
+        burst: 40
+        period: 1m
+
+tcp:
+  routers:
+    # 587 STARTTLS: the connection starts in PLAINTEXT and upgrades via
+    # STARTTLS, so Traefik cannot SNI-route it — forward raw TCP and let the
+    # relay terminate TLS. HostSNI(`*`) is the required rule for non-TLS TCP.
+    smtp-submission:
+      entryPoints: ["smtp587"]
+      rule: "HostSNI(`*`)"
+      service: relay-587
+    # 465 implicit TLS: SNI is available in the ClientHello, so pass the TLS
+    # stream straight through to the relay which presents the certificate.
+    smtp-smtps:
+      entryPoints: ["smtp465"]
+      rule: "HostSNI(`*`)"
+      tls:
+        passthrough: true
+      service: relay-465
+  services:
+    relay-587:
+      loadBalancer:
+        servers:
+          - address: "relay:587"
+    relay-465:
+      loadBalancer:
+        servers:
+          - address: "relay:465"

@@ -1,0 +1,22 @@
+# Traefik v3.6 static configuration (dev).
+entryPoints:
+  websecure:
+    address: ":443"
+  smtp587:
+    address: ":587"
+  smtp465:
+    address: ":465"
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+api:
+  dashboard: true
+  insecure: true   # dev only — do NOT enable in production
+
+log:
+  level: INFO
+
+accessLog: {}

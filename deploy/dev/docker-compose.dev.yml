@@ -1,0 +1,126 @@
+# =============================================================================
+# Development stack — internet-facing topology, locally in Docker Desktop.
+# =============================================================================
+# Mirrors the production edge deployment (see docs/DEPLOY-EDGE.md):
+#   certgen  : one-shot self-signed cert into the shared cert volume
+#   traefik  : v3.6 edge — TLS for the panel + TCP passthrough for SMTP
+#   ui       : FastAPI panel, reached by Traefik DIRECTLY (Option A trusted
+#              proxy: no internal nginx; uvicorn trusts Traefik's XFF)
+#   relay    : terminates SMTP TLS itself on 465 (implicit) + 587 (STARTTLS)
+#
+# Host ports (loopback only): 8443 HTTPS panel, 8587 STARTTLS, 8465 SMTPS,
+# 2525 plain SMTP, 18080 Traefik dashboard.
+#
+# Usage:
+#   cp deploy/dev/.env.example deploy/dev/.env   # then fill the two keys
+#   docker compose -f deploy/dev/docker-compose.dev.yml up -d --build
+# =============================================================================
+
+name: smtp-relay-dev
+
+services:
+  certgen:
+    image: alpine:3
+    volumes:
+      - dev-certs:/certs
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        apk add --no-cache openssl >/dev/null 2>&1
+        if [ ! -s /certs/fullchain.pem ]; then
+          echo "certgen: generating dev self-signed cert"
+          openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes -keyout /certs/privkey.pem -out /certs/fullchain.pem -subj "/CN=smtp-relay.localhost" -addext "subjectAltName=DNS:smtp-relay.localhost,DNS:*.smtp-relay.localhost,DNS:localhost,IP:127.0.0.1"
+          # World-readable so the non-root relay (uid 1000) can load it.
+          # Acceptable for a throwaway dev key; in production ensure the
+          # edge writes the key readable by the relay uid.
+          chmod 644 /certs/fullchain.pem /certs/privkey.pem
+          echo "certgen: done"
+        else
+          echo "certgen: cert already present"
+        fi
+    networks:
+      - dev
+
+  traefik:
+    image: traefik:v3.6
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "127.0.0.1:8443:443"   # HTTPS panel
+      - "127.0.0.1:8587:587"   # SMTP submission (STARTTLS) — TCP passthrough
+      - "127.0.0.1:8465:465"   # SMTPS (implicit TLS) — TCP passthrough
+      - "127.0.0.1:18080:8080"  # dashboard (dev only)
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - dev-certs:/certs:ro
+    networks:
+      dev:
+        ipv4_address: 172.31.0.10
+
+  ui:
+    build:
+      context: ../..
+      dockerfile: ui/Dockerfile
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in deploy/dev/.env}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in deploy/dev/.env}
+      DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
+      ARCHIVE_PATH: "/data/archive"
+      APP_NAME: "SMTP Relay (dev)"
+      # Trusted-proxy fix (Option A): trust X-Forwarded-For only from the
+      # Traefik container's pinned IP, so uvicorn records the REAL client IP
+      # for bans / rate-limits instead of the proxy address.
+      FORWARDED_ALLOW_IPS: "172.31.0.10"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - dev-data:/data
+    networks:
+      - dev
+
+  relay:
+    build:
+      context: ../..
+      dockerfile: relay/Dockerfile
+    depends_on:
+      ui:
+        condition: service_started
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in deploy/dev/.env}
+      DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
+      ARCHIVE_PATH: "/data/archive"
+      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_TLS_CERT: "/etc/smtp-relay/certs/fullchain.pem"
+      SMTP_TLS_KEY: "/etc/smtp-relay/certs/privkey.pem"
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:2525:2525"   # plain LAN listener (local convenience)
+    volumes:
+      - dev-data:/data
+      - dev-certs:/etc/smtp-relay/certs:ro
+    networks:
+      - dev
+
+volumes:
+  dev-data:
+  dev-certs:
+
+networks:
+  dev:
+    driver: bridge
+    ipam:
+      config:
+        # Dynamic pool is the upper half; traefik's pinned .10 sits in the
+        # lower half so it is never auto-assigned to another container.
+        - subnet: 172.31.0.0/24
+          ip_range: 172.31.0.128/25
