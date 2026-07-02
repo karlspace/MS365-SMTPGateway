@@ -1,0 +1,44 @@
+# Sync Upstream - uses the shared reusable workflow.
+#
+# Stage A: syncs the `main` mirror from upstream (nicolafilippetto/smtp-relay)
+#          via the native merge-upstream API (GitHub "Sync fork").
+# Stage B: merges main -> workspace; on a clean merge it pushes (which triggers
+#          fork-docker-build.yml). A conflict raises a warning + issue.
+#
+# Requires a PAT secret (PAT_READWRITE_ORGANISATION) so the workspace push
+# triggers the build.
+
+name: 🔄 Sync Upstream
+
+on:
+  schedule:
+    - cron: "0 4 1 * *" # monthly, 1st at 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      mirror-branch:
+        description: "Fork branch to sync from upstream"
+        required: false
+        default: "main"
+      integrate-into:
+        description: "Integration branch to merge into (empty = mirror-only)"
+        required: false
+        default: "workspace"
+      dry-run:
+        description: "Only verify the fork relationship; change nothing"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    name: Sync with Upstream
+    uses: bauer-group/automation-templates/.github/workflows/sync-upstream.yml@main
+    with:
+      mirror-branch: ${{ github.event.inputs.mirror-branch || 'main' }}
+      integrate-into: ${{ github.event.inputs.integrate-into || 'workspace' }}
+      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+    secrets: inherit
