@@ -112,7 +112,9 @@ services:
       ARCHIVE_PATH: "/data/archive"
       SMTP_LISTEN_HOST: "0.0.0.0"
       SMTP_LISTEN_PORT: "2525"
-      SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-31457280}
+      # Transport ceiling: base64(MIME) is one Graph sendMail POST, capped ~4 MB.
+      # Keep raw MIME < ~2.9 MB or Graph 413s and the mail dies DEAD. See .env.
+      SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-2621440}
       SMTP_MAX_RECIPIENTS: ${SMTP_MAX_RECIPIENTS:-100}
       # No SMTP_TLS_CERT / SMTP_TLS_KEY on purpose -> plaintext-only.
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -138,8 +140,8 @@ services:
       resources:
         limits:
           cpus: "${RELAY_CPUS:-1.0}"
-          # Headroom for concurrent large messages (SMTP_MAX_MESSAGE_SIZE=30M);
-          # one message peaks ~200M raw + base64-for-Graph. 512M absorbs bursts.
+          # Message size is transport-capped ~4 MB (Graph), so per-message memory
+          # is small; base Python + the queue/DB dominate. 512M is generous.
           memory: ${RELAY_MEMORY:-512M}
     networks:
       - local

@@ -95,6 +95,28 @@ docker compose -f docker-compose.internal.yml --env-file .env up -d
 
 ---
 
+## Message size limit (~4 MB — a hard Graph ceiling)
+
+The relay delivers every message as a **single base64 `sendMail` POST** to
+Microsoft Graph, which caps that request at **~4 MB**
+([docs](https://learn.microsoft.com/en-us/graph/outlook-large-attachments)).
+base64 inflates the MIME by ~33%, so `SMTP_MAX_MESSAGE_SIZE` is set to **2.5 MiB**
+of raw MIME (≈ 3.3 MB on the wire) — a usable attachment of **~1.9 MB**.
+
+A message above the ceiling is **accepted at submission** (store-and-forward
+returns `250 OK`), then rejected by Graph with **HTTP 413**. Because 413 is a
+permanent error, the queue worker retries it to exhaustion and marks it
+**`DEAD`** — the sender is never told. So the SMTP limit is deliberately set
+*below* what Graph will reject, so every accepted message is actually deliverable.
+
+> Raising `SMTP_MAX_MESSAGE_SIZE` above ~3 MB does **not** enable larger mail — it
+> just lets bigger messages in to die as `DEAD`. Real large-attachment support
+> needs the Graph **upload-session** flow (draft → `createUploadSession` →
+> chunked `PUT`) added to the relay, which also changes the exact-MIME
+> (DKIM-preserving) behaviour. Ask if you want that built.
+
+---
+
 ## TLS for the SMTP listeners
 
 The relay starts the **465/587** listeners only once **both** files exist in the

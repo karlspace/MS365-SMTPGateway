@@ -155,7 +155,9 @@ services:
       SMTP_LISTEN_PORT: "2525"
       SMTP_STARTTLS_PORT: "587"
       SMTP_IMPLICIT_TLS_PORT: "465"
-      SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-31457280}
+      # Transport ceiling: base64(MIME) is one Graph sendMail POST, capped ~4 MB.
+      # Keep raw MIME < ~2.9 MB or Graph 413s and the mail dies DEAD. See .env.
+      SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-2621440}
       SMTP_MAX_RECIPIENTS: ${SMTP_MAX_RECIPIENTS:-100}
       SMTP_TLS_CERT: ${SMTP_TLS_CERT:-/etc/smtp-relay/certs/fullchain.pem}
       SMTP_TLS_KEY: ${SMTP_TLS_KEY:-/etc/smtp-relay/certs/privkey.pem}
@@ -186,9 +188,9 @@ services:
       resources:
         limits:
           cpus: "${RELAY_CPUS:-1.0}"
-          # Headroom for concurrent large messages: the send path is serial, but
-          # SMTP_MAX_MESSAGE_SIZE (30M) means one message peaks ~200M (raw +
-          # base64-for-Graph + buffers). 512M absorbs attachment bursts.
+          # Message size is transport-capped at ~4 MB (Graph sendMail), so per-
+          # message memory is small; base Python + the queue/DB dominate. 512M is
+          # generous headroom — 256M would also suffice for this profile.
           memory: ${RELAY_MEMORY:-512M}
     networks:
       - local
