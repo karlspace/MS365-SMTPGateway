@@ -66,8 +66,10 @@ services:
       UI_LOGIN_BAN_DURATION_MIN: ${UI_LOGIN_BAN_DURATION_MIN:-30}
       ADMIN_RESET: ${ADMIN_RESET:-0}
       ADMIN_NEW_PASSWORD: ${ADMIN_NEW_PASSWORD:-}
-      # Trust X-Forwarded-For only from the edge (never "*"). See .env comments.
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      # Trust X-Forwarded-For from the internal Docker stack only — the panel
+      # port 8000 is never host-published, so only the edge can reach it.
+      # Private ranges v4+v6; never "*". See .env comments.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7}
       TZ: ${TIME_ZONE:-Etc/UTC}
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
@@ -91,7 +93,7 @@ services:
           cpus: "${UI_CPUS:-1.0}"
           memory: ${UI_MEMORY:-384M}
     networks:
-      - internal
+      - local
       - proxy
     labels:
       - "traefik.enable=true"
@@ -186,7 +188,54 @@ services:
           cpus: "${RELAY_CPUS:-1.0}"
           memory: ${RELAY_MEMORY:-384M}
     networks:
-      - internal
+      - local
+
+  # ── (optional) Auto-adopt the Let's Encrypt cert from Traefik ──────────────
+  #   Watches Traefik's acme.json and dumps <domain>/fullchain.pem + privkey.pem
+  #   for every ACME domain into the certs volume, made readable by the relay
+  #   (uid 1000) via the post-hook. The relay then hot-reloads and brings up
+  #   465/587 on its own — no restart needed.
+  #
+  #   OPT-IN — disabled unless its profile is active:
+  #     docker compose -f docker-compose.traefik.yml --profile certs-dumper up -d
+  #
+  #   Requires (in .env):
+  #     - TRAEFIK_ACME_FILE : host path to your Traefik instance's acme.json
+  #     - SMTP_TLS_CERT / SMTP_TLS_KEY pointed at the mail domain's sub-dir, e.g.
+  #         SMTP_TLS_CERT=/etc/smtp-relay/certs/mail.example.com/fullchain.pem
+  #         SMTP_TLS_KEY=/etc/smtp-relay/certs/mail.example.com/privkey.pem
+  # ---------------------------------------------------------------------------
+  certs-dumper:
+    <<: *logging
+    image: ldez/traefik-certs-dumper:v2.11.4
+    profiles:
+      - certs-dumper
+    container_name: ${STACK_NAME:-smtp-relay}_CERTS_DUMPER
+    hostname: smtp-relay-certs-dumper
+    restart: unless-stopped
+    # Dump per-domain fullchain.pem + privkey.pem, re-dumping on acme.json change
+    # (v3 = Traefik v3 store format). --clean=false overwrites in place instead of
+    # wiping the dir, so the relay's file-watch never sees the cert disappear.
+    command:
+      - file
+      - --version=v3
+      - --watch
+      - --clean=false
+      - --source=/traefik/acme.json
+      - --dest=/certs
+      - --domain-subdir
+      - --crt-name=fullchain
+      - --crt-ext=.pem
+      - --key-name=privkey
+      - --key-ext=.pem
+      - --post-hook
+      - sh /hook.sh
+    volumes:
+      - ${TRAEFIK_ACME_FILE:-/var/lib/traefik/acme.json}:/traefik/acme.json:ro
+      - ./certs-dumper/hook.sh:/hook.sh:ro
+      - certs:/certs
+    networks:
+      - local
 
 
 volumes:
@@ -200,9 +249,9 @@ volumes:
 
 
 networks:
-  internal:
+  local:
     driver: bridge
-    name: ${STACK_NAME:-smtp-relay}-internal
+    name: ${STACK_NAME:-smtp-relay}-local
     enable_ipv6: false
   proxy:
     name: ${PROXY_NETWORK:-EDGEPROXY}

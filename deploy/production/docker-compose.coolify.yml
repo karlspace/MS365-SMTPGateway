@@ -66,11 +66,10 @@ services:
       UI_LOGIN_BAN_DURATION_MIN: ${UI_LOGIN_BAN_DURATION_MIN:-30}
       ADMIN_RESET: ${ADMIN_RESET:-0}
       ADMIN_NEW_PASSWORD: ${ADMIN_NEW_PASSWORD:-}
-      # Trust X-Forwarded-For only from Coolify's proxy network (never "*").
-      # Coolify's edge sits on the `coolify` network (private range by default);
-      # narrow this once you know its subnet, then verify real client IPs in the
-      # audit log. See ../../docs/DEPLOY-EDGE.md §1.
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      # Trust X-Forwarded-For from the internal Docker stack only — the panel
+      # port 8000 is never host-published, so only Coolify's proxy can reach it.
+      # Private ranges v4+v6; never "*". See ../../docs/DEPLOY-EDGE.md §1.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7}
       TZ: ${TIME_ZONE:-Etc/UTC}
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
@@ -94,7 +93,7 @@ services:
           cpus: "${UI_CPUS:-1.0}"
           memory: ${UI_MEMORY:-384M}
     networks:
-      - internal
+      - local
 
   # ── SMTP relay (submission 465/587, plaintext 2525) ────────────────────────
   #   Published straight to the host — SMTP does not go through Coolify's proxy.
@@ -149,7 +148,7 @@ services:
           cpus: "${RELAY_CPUS:-1.0}"
           memory: ${RELAY_MEMORY:-384M}
     networks:
-      - internal
+      - local
 
 
 volumes:
@@ -160,5 +159,5 @@ volumes:
 
 
 networks:
-  internal:
+  local:
     driver: bridge

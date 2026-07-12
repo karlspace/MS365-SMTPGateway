@@ -1,0 +1,154 @@
+# =============================================================================
+# MS365 SMTP Gateway — Internal / LAN (plaintext, NO TLS certificates)
+# =============================================================================
+# A self-contained variant for a TRUSTED internal network: no edge proxy, no
+# ACME, no certificate wiring. The relay serves plaintext SMTP submission and
+# the panel is plain HTTP. Use it when clients live on the same trusted LAN and
+# TLS is terminated elsewhere (or not required internally).
+#
+#   cp .env.internal.example .env    # or reuse .env.production.example
+#   docker compose -f docker-compose.internal.yml --env-file .env up -d
+#
+#   Panel : http://<host>:${UI_HTTP_PORT:-8080}/
+#   SMTP  : <host>:${SMTP_PLAIN_PORT:-2525}   (plaintext submission)
+#
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │ ⚠ SECURITY — trusted networks only                                        │
+# │ SMTP submission and the admin login travel in CLEARTEXT. Anyone who can    │
+# │ sniff the LAN sees SMTP account passwords and admin credentials. Do NOT    │
+# │ expose these ports to the internet. For internet-facing use take the       │
+# │ Traefik or Coolify compose instead (TLS at the edge + on SMTP).            │
+# └───────────────────────────────────────────────────────────────────────────┘
+# =============================================================================
+
+name: ${STACK_NAME:-smtp-relay}
+
+
+### Reusable fragments ########################################################
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+
+services:
+
+  # ── Admin panel (plain HTTP on the LAN) ────────────────────────────────────
+  ui:
+    <<: [*logging, *hardening]
+    image: ghcr.io/karlspace/ms365-smtpgateway/ui:${IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: ${STACK_NAME:-smtp-relay}_UI
+    hostname: smtp-relay-ui
+    restart: unless-stopped
+    environment:
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
+      ARCHIVE_PATH: "/data/archive"
+      APP_NAME: ${APP_NAME:-MS365 SMTP Gateway}
+      SESSION_LIFETIME_HOURS: ${SESSION_LIFETIME_HOURS:-8}
+      UI_LOGIN_BAN_THRESHOLD: ${UI_LOGIN_BAN_THRESHOLD:-5}
+      UI_LOGIN_BAN_DURATION_MIN: ${UI_LOGIN_BAN_DURATION_MIN:-30}
+      ADMIN_RESET: ${ADMIN_RESET:-0}
+      ADMIN_NEW_PASSWORD: ${ADMIN_NEW_PASSWORD:-}
+      # Plain HTTP: session/CSRF cookies must NOT be flagged Secure, or the
+      # browser would never send them back over http:// (breaks login).
+      SMTP_UI_COOKIE_SECURE: "0"
+      TZ: ${TIME_ZONE:-Etc/UTC}
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      # Panel published directly on the LAN. Bind to a specific interface with
+      # UI_HTTP_BIND=10.0.0.5 to avoid exposing it on every host address.
+      - "${UI_HTTP_BIND:-0.0.0.0}:${UI_HTTP_PORT:-8080}:8000"
+    volumes:
+      - data:/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/tmp:size=16m,mode=1777
+    healthcheck:
+      # urlopen raises (non-zero exit) on connection failure or any non-2xx.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      start_period: 40s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "${UI_CPUS:-1.0}"
+          memory: ${UI_MEMORY:-384M}
+    networks:
+      - local
+
+  # ── SMTP relay (plaintext submission only) ─────────────────────────────────
+  #   No certs volume and no SMTP_TLS_CERT, so the relay runs the 2525 plaintext
+  #   listener only — the TLS listeners (465/587) stay off by design.
+  # ---------------------------------------------------------------------------
+  relay:
+    <<: [*logging, *hardening]
+    image: ghcr.io/karlspace/ms365-smtpgateway/relay:${IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: ${STACK_NAME:-smtp-relay}_RELAY
+    hostname: smtp-relay-smtp
+    restart: unless-stopped
+    depends_on:
+      ui:
+        condition: service_healthy
+    environment:
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+      DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
+      ARCHIVE_PATH: "/data/archive"
+      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_LISTEN_PORT: "2525"
+      SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-31457280}
+      SMTP_MAX_RECIPIENTS: ${SMTP_MAX_RECIPIENTS:-100}
+      # No SMTP_TLS_CERT / SMTP_TLS_KEY on purpose -> plaintext-only.
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TZ: ${TIME_ZONE:-Etc/UTC}
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      # Plaintext submission on the LAN. Map to 25 or 587 on the host if your
+      # internal clients expect a standard port: SMTP_PLAIN_PORT=25.
+      - "${SMTP_PLAIN_BIND:-0.0.0.0}:${SMTP_PLAIN_PORT:-2525}:2525"
+    volumes:
+      - data:/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/tmp:size=16m,mode=1777
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',2525),3).close()"]
+      interval: 30s
+      timeout: 8s
+      start_period: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "${RELAY_CPUS:-1.0}"
+          memory: ${RELAY_MEMORY:-384M}
+    networks:
+      - local
+
+
+volumes:
+  data:
+    name: ${STACK_NAME:-smtp-relay}-data
+
+
+networks:
+  local:
+    driver: bridge
+    name: ${STACK_NAME:-smtp-relay}-local

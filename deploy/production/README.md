@@ -8,6 +8,7 @@ CI — they never build locally.
 |------|----------|------------|
 | [`docker-compose.traefik.yml`](docker-compose.traefik.yml) | Standalone Traefik v3 | Your Traefik (ACME), attached via `traefik.*` labels |
 | [`docker-compose.coolify.yml`](docker-compose.coolify.yml) | Coolify PaaS | Coolify's managed proxy (routing + TLS from the dashboard) |
+| [`docker-compose.internal.yml`](docker-compose.internal.yml) | Trusted LAN | **None** — plaintext SMTP + plain-HTTP panel (no certs) |
 
 Both follow **Option A** of [`../../docs/DEPLOY-EDGE.md`](../../docs/DEPLOY-EDGE.md):
 the edge terminates HTTPS for the panel and proxies plain HTTP to `ui:8000` — no
@@ -74,6 +75,26 @@ Coolify generates the HTTP router and TLS itself, so this file carries no
 
 ---
 
+## Deploy internal / LAN (no TLS)
+
+For a trusted internal network where TLS is not required on the SMTP side. No
+edge, no ACME, no certificates: the relay serves **plaintext** submission and the
+panel is **plain HTTP**.
+
+```sh
+cd deploy/production
+cp .env.production.example .env      # ENCRYPTION_KEY + SECRET_KEY are enough
+docker compose -f docker-compose.internal.yml --env-file .env up -d
+#   Panel : http://<host>:8080/         (UI_HTTP_PORT)
+#   SMTP  : <host>:2525  plaintext      (SMTP_PLAIN_PORT — set 25/587 if needed)
+```
+
+> ⚠ SMTP submission and the admin login travel in **cleartext**. Only run this on
+> a trusted LAN and never expose these ports to the internet — use the Traefik or
+> Coolify variant for anything internet-facing.
+
+---
+
 ## TLS for the SMTP listeners
 
 The relay starts the **465/587** listeners only once **both** files exist in the
@@ -92,18 +113,41 @@ cleanly; wire the cert, then `restart` the relay (it also hot-reloads on change)
 > silently stays off (logged at ERROR). `chmod 644` the key, or have the writer
 > run with a matching uid. See DEPLOY-EDGE.md §2.
 
-Pick one provisioning method — the volume is just the drop-off point:
+The volume is just the drop-off point. Pick a provisioning method:
 
-- **traefik-certs-dumper** (Traefik ACME): run
-  [`ldez/traefik-certs-dumper`](https://github.com/ldez/traefik-certs-dumper) as a
-  sidecar that watches Traefik's `acme.json` and writes `fullchain.pem` /
-  `privkey.pem` into the `certs` volume. Point `SMTP_TLS_CERT` / `SMTP_TLS_KEY`
-  at whatever filenames it emits if they differ.
+### Automated: adopt Traefik's Let's Encrypt cert (recommended)
+
+The Traefik compose ships an **opt-in `certs-dumper` sidecar**
+([`ldez/traefik-certs-dumper`](https://github.com/ldez/traefik-certs-dumper))
+that watches Traefik's `acme.json` and dumps `fullchain.pem` + `privkey.pem` per
+domain into the `certs` volume, made readable by the relay via a post-hook. On
+renewal the relay hot-reloads and re-arms 465/587 by itself — no restart.
+
+```sh
+# in .env:
+TRAEFIK_ACME_FILE=/var/lib/traefik/acme.json          # your Traefik's acme.json
+SMTP_TLS_CERT=/etc/smtp-relay/certs/mail.example.com/fullchain.pem
+SMTP_TLS_KEY=/etc/smtp-relay/certs/mail.example.com/privkey.pem
+
+docker compose -f docker-compose.traefik.yml --env-file .env --profile certs-dumper up -d
+```
+
+Instead of `--profile certs-dumper` on every command you can set
+`COMPOSE_PROFILES=certs-dumper` in `.env` — it is honoured via `--env-file`.
+
+Traefik must already be serving the mail hostname (so its cert is in `acme.json`)
+— add a router for it, or a throwaway HTTP router on that host, to trigger ACME.
+
+### Manual alternatives
+
 - **certbot / host-managed cert**: replace the named `certs` volume with a
   bind-mount of the directory holding your PEM pair (e.g. a certbot
   `live/<domain>/` dir), mounted read-only at `/etc/smtp-relay/certs`.
 - **Caddy**: copy `<domain>.crt` → `fullchain.pem` and `<domain>.key` →
   `privkey.pem` from Caddy's data dir into the volume.
+- **Coolify**: Coolify's proxy keeps its ACME store at
+  `/data/coolify/proxy/acme.json` on the host — the same `certs-dumper` sidecar
+  works if you bind that path in as `TRAEFIK_ACME_FILE`.
 
 The SMTP certificate should cover the **mail hostname** clients connect to
 (e.g. `mail.example.com`), which may differ from `PANEL_DOMAIN`.
@@ -124,10 +168,12 @@ ID application credentials and SMTP accounts through the panel.
 ## Verify the trusted-proxy chain
 
 Per-IP bans and rate-limits depend on the panel seeing the **real** client IP.
-After first login, log in from two different public IPs and confirm the audit log
-shows those IPs — **not** the edge address. If it shows the edge IP, narrow
-`FORWARDED_ALLOW_IPS` to the edge subnet (never `*`) and confirm your uvicorn
-build honours it. See DEPLOY-EDGE.md §1.
+The default `FORWARDED_ALLOW_IPS` trusts all private ranges (v4+v6), which covers
+the edge inside the Docker stack — the only thing that can reach the un-published
+panel port. After first login, log in from two different public IPs and confirm
+the audit log shows those IPs — **not** the edge address. If it shows the edge
+IP, the edge subnet is not in `FORWARDED_ALLOW_IPS`: add it (never use `*`). See
+DEPLOY-EDGE.md §1.
 
 ## Smoke test
 
