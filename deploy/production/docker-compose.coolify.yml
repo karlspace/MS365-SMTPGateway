@@ -1,0 +1,164 @@
+# =============================================================================
+# MS365 SMTP Gateway — Production (Coolify)
+# =============================================================================
+# Deploy via Coolify: New Resource -> Docker Compose, paste/point to this file,
+# then set the environment variables in the Coolify dashboard.
+#
+# Coolify manages the edge (Traefik/Caddy) itself — it generates the HTTP
+# routers, TLS resolver and security headers from the Domain you set on the
+# service. Therefore this file carries NO traefik.* labels (they would collide
+# with Coolify's auto-generated routers).
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │ COOLIFY SERVICE CONFIGURATION                                            │
+# ├──────────────┬──────────────────────────────────────────────────────────┤
+# │ Service      │ Coolify setting                                          │
+# ├──────────────┼──────────────────────────────────────────────────────────┤
+# │ ui           │ Domain:  https://panel.smtp.example.com  (routes to 8000)│
+# │ relay        │ No domain — reached over SMTP on host ports 465/587      │
+# └──────────────┴──────────────────────────────────────────────────────────┘
+#
+# Topology (docs/DEPLOY-EDGE.md, Option A — no internal nginx):
+#   client --443--> Coolify edge --http--> ui:8000     (panel; edge owns TLS)
+#   client --465/587-----------------------> relay     (SMTP, relay owns TLS)
+#
+# Required ENV: ENCRYPTION_KEY, SECRET_KEY, FORWARDED_ALLOW_IPS
+# =============================================================================
+
+
+### Reusable fragments ########################################################
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+
+services:
+
+  # ── Admin panel (FastAPI / uvicorn on :8000) ───────────────────────────────
+  #   Set the service Domain in Coolify -> it terminates TLS and proxies to 8000.
+  # ---------------------------------------------------------------------------
+  ui:
+    <<: [*logging, *hardening]
+    image: ghcr.io/karlspace/ms365-smtpgateway/ui:${IMAGE_TAG:-latest}
+    # Refresh moving tags (latest/workspace) on every Coolify redeploy.
+    pull_policy: always
+    hostname: smtp-relay-ui
+    restart: unless-stopped
+    environment:
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in Coolify}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in Coolify}
+      DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
+      ARCHIVE_PATH: "/data/archive"
+      APP_NAME: ${APP_NAME:-MS365 SMTP Gateway}
+      SESSION_LIFETIME_HOURS: ${SESSION_LIFETIME_HOURS:-8}
+      UI_LOGIN_BAN_THRESHOLD: ${UI_LOGIN_BAN_THRESHOLD:-5}
+      UI_LOGIN_BAN_DURATION_MIN: ${UI_LOGIN_BAN_DURATION_MIN:-30}
+      ADMIN_RESET: ${ADMIN_RESET:-0}
+      ADMIN_NEW_PASSWORD: ${ADMIN_NEW_PASSWORD:-}
+      # Trust X-Forwarded-For only from Coolify's proxy network (never "*").
+      # Coolify's edge sits on the `coolify` network (private range by default);
+      # narrow this once you know its subnet, then verify real client IPs in the
+      # audit log. See ../../docs/DEPLOY-EDGE.md §1.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      TZ: ${TIME_ZONE:-Etc/UTC}
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    expose:
+      - "8000"
+    volumes:
+      - data:/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/tmp:size=16m,mode=1777
+    healthcheck:
+      # urlopen raises (non-zero exit) on connection failure or any non-2xx.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      start_period: 40s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "${UI_CPUS:-1.0}"
+          memory: ${UI_MEMORY:-384M}
+    networks:
+      - internal
+
+  # ── SMTP relay (submission 465/587, plaintext 2525) ────────────────────────
+  #   Published straight to the host — SMTP does not go through Coolify's proxy.
+  #   465/587 start once a cert is present in the certs volume; until then the
+  #   relay serves 2525 only.
+  # ---------------------------------------------------------------------------
+  relay:
+    <<: [*logging, *hardening]
+    image: ghcr.io/karlspace/ms365-smtpgateway/relay:${IMAGE_TAG:-latest}
+    pull_policy: always
+    hostname: smtp-relay-smtp
+    restart: unless-stopped
+    depends_on:
+      ui:
+        condition: service_healthy
+    environment:
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in Coolify}
+      DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
+      ARCHIVE_PATH: "/data/archive"
+      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_LISTEN_PORT: "2525"
+      SMTP_STARTTLS_PORT: "587"
+      SMTP_IMPLICIT_TLS_PORT: "465"
+      SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-31457280}
+      SMTP_MAX_RECIPIENTS: ${SMTP_MAX_RECIPIENTS:-100}
+      SMTP_TLS_CERT: ${SMTP_TLS_CERT:-/etc/smtp-relay/certs/fullchain.pem}
+      SMTP_TLS_KEY: ${SMTP_TLS_KEY:-/etc/smtp-relay/certs/privkey.pem}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TZ: ${TIME_ZONE:-Etc/UTC}
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_SUBMISSION_PORT:-587}:587"
+      - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_SMTPS_PORT:-465}:465"
+      # Plaintext submission for trusted LAN devices only (opt-in, bind to LAN).
+      # - "${SMTP_PLAIN_BIND:-127.0.0.1}:2525:2525"
+    volumes:
+      - data:/data
+      - certs:/etc/smtp-relay/certs:ro
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/tmp:size=16m,mode=1777
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',2525),3).close()"]
+      interval: 30s
+      timeout: 8s
+      start_period: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "${RELAY_CPUS:-1.0}"
+          memory: ${RELAY_MEMORY:-384M}
+    networks:
+      - internal
+
+
+volumes:
+  # In Coolify these map to persistent storage. `data` holds the shared SQLite
+  # DB + message archive; `certs` receives the SMTP TLS pair (see README).
+  data:
+  certs:
+
+
+networks:
+  internal:
+    driver: bridge

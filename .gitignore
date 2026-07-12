@@ -3,6 +3,10 @@
 *.env
 .env.*
 
+# Ignore all .env files except for the example ones
+!.env.example
+!.env.production.example
+
 # Database locale
 *.db
 *.sqlite
@@ -25,6 +29,5 @@ zap-reports/
 *.log
 logs/
 
-# Docker volumes locali
+# Docker volumes
 data/
-!.env.example
