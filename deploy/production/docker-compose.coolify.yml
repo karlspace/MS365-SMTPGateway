@@ -146,7 +146,9 @@ services:
       resources:
         limits:
           cpus: "${RELAY_CPUS:-1.0}"
-          memory: ${RELAY_MEMORY:-384M}
+          # Headroom for concurrent large messages (SMTP_MAX_MESSAGE_SIZE=30M);
+          # one message peaks ~200M raw + base64-for-Graph. 512M absorbs bursts.
+          memory: ${RELAY_MEMORY:-512M}
     networks:
       - local
 
