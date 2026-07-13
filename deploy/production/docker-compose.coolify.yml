@@ -114,13 +114,13 @@ services:
       DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
       ARCHIVE_PATH: "/data/archive"
       SMTP_LISTEN_HOST: "0.0.0.0"
-      SMTP_LISTEN_PORT: "2525"
+      SMTP_LISTEN_PORT: "25"
       SMTP_STARTTLS_PORT: "587"
       SMTP_IMPLICIT_TLS_PORT: "465"
       # Transport ceiling: base64(MIME) is one Graph sendMail POST, capped ~4 MB.
       # Keep raw MIME < ~2.9 MB or Graph 413s and the mail dies DEAD. See .env.
       SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-2621440}
-      SMTP_MAX_RECIPIENTS: ${SMTP_MAX_RECIPIENTS:-100}
+      SMTP_MAX_RECIPIENTS: ${SMTP_MAX_RECIPIENTS:-1000}
       SMTP_TLS_CERT: ${SMTP_TLS_CERT:-/etc/smtp-relay/certs/fullchain.pem}
       SMTP_TLS_KEY: ${SMTP_TLS_KEY:-/etc/smtp-relay/certs/privkey.pem}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -131,7 +131,7 @@ services:
       - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_SUBMISSION_PORT:-587}:587"
       - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_SMTPS_PORT:-465}:465"
       # Plaintext submission for trusted LAN devices only (opt-in, bind to LAN).
-      # - "${SMTP_PLAIN_BIND:-127.0.0.1}:2525:2525"
+      # - "${SMTP_PLAIN_BIND:-127.0.0.1}:2525:25"
     volumes:
       - data:/data
       - certs:/etc/smtp-relay/certs:ro
@@ -139,7 +139,7 @@ services:
       - /tmp:size=64m,mode=1777
       - /var/tmp:size=16m,mode=1777
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',2525),3).close()"]
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',25),3).close()"]
       interval: 30s
       timeout: 8s
       start_period: 20s
