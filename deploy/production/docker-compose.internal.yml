@@ -110,7 +110,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
       DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
       ARCHIVE_PATH: "/data/archive"
-      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_LISTEN_HOST: '::'
       SMTP_LISTEN_PORT: "25"
       # Transport ceiling: base64(MIME) is one Graph sendMail POST, capped ~4 MB.
       # Keep raw MIME < ~2.9 MB or Graph 413s and the mail dies DEAD. See .env.

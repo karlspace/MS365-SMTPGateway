@@ -151,7 +151,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
       DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
       ARCHIVE_PATH: "/data/archive"
-      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_LISTEN_HOST: '::'
       SMTP_LISTEN_PORT: "25"
       SMTP_STARTTLS_PORT: "587"
       SMTP_IMPLICIT_TLS_PORT: "465"
@@ -167,8 +167,8 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
     ports:
       # Internet-facing TLS submission. The relay enforces AUTH-over-TLS.
-      - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_SUBMISSION_PORT:-587}:587"
-      - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_SMTPS_PORT:-465}:465"
+      - "${SMTP_BIND_HOST:-[::]}:${SMTP_SUBMISSION_PORT:-587}:587"
+      - "${SMTP_BIND_HOST:-[::]}:${SMTP_SMTPS_PORT:-465}:465"
       # Plaintext submission for trusted LAN devices only. Opt-in: bind it to a
       # LAN interface (e.g. SMTP_PLAIN_BIND=10.0.0.5) and never to 0.0.0.0.
       # - "${SMTP_PLAIN_BIND:-127.0.0.1}:2525:25"

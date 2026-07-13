@@ -55,7 +55,7 @@ services:
           memory: 384M
     ports:
       # Plaintext submission — bind to the LAN only (set SMTP_BIND_HOST).
-      - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_BIND_PORT:-2525}:2525"
+      - "${SMTP_BIND_HOST:-[::]}:${SMTP_BIND_PORT:-2525}:2525"
       # TLS submission (STARTTLS) and implicit TLS (SMTPS) for internet-
       # facing clients. Active only when a cert exists in the certs volume.
       - "${SMTP_SUBMISSION_BIND_HOST:-0.0.0.0}:${SMTP_SUBMISSION_PORT:-587}:587"
@@ -64,7 +64,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
       ARCHIVE_PATH: "/data/archive"
-      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_LISTEN_HOST: '::'
       SMTP_LISTEN_PORT: "2525"
       SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-31457280}
       SMTP_MAX_RECIPIENTS: ${SMTP_MAX_RECIPIENTS:-100}

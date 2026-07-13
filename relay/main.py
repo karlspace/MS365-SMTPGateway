@@ -405,7 +405,7 @@ async def _run() -> None:
         controller.start()
     _log.info(
         "SMTP listeners started on %s: ports %s (max message size %d bytes)",
-        build_controller_kwargs()["hostname"] or "0.0.0.0",
+        build_controller_kwargs()["hostname"] or '::',
         ", ".join(str(c.port) for c in controllers),
         int(os.environ.get("SMTP_MAX_MESSAGE_SIZE", "31457280")),
     )

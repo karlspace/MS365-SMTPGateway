@@ -86,7 +86,7 @@ services:
       # Default bind on all interfaces of the container; the operator MUST
       # restrict reachability at the Docker network / host firewall level.
       # See README -> Hardening.
-      - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_BIND_PORT:-2525}:2525"
+      - "${SMTP_BIND_HOST:-[::]}:${SMTP_BIND_PORT:-2525}:2525"
       # TLS submission (STARTTLS) and implicit TLS (SMTPS); active only
       # when a cert exists in the certs volume.
       - "${SMTP_SUBMISSION_BIND_HOST:-0.0.0.0}:${SMTP_SUBMISSION_PORT:-587}:587"
@@ -95,7 +95,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
       ARCHIVE_PATH: "/data/archive"
-      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_LISTEN_HOST: '::'
       SMTP_LISTEN_PORT: "2525"
       # Maximum message size (bytes). Defaults to 30 MiB.
       SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-31457280}

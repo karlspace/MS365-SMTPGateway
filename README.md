@@ -80,12 +80,12 @@ services:
     container_name: smtp-relay-smtp
     restart: unless-stopped
     ports:
-      - "${SMTP_BIND_HOST:-0.0.0.0}:${SMTP_BIND_PORT:-2525}:2525"
+      - "${SMTP_BIND_HOST:-[::]}:${SMTP_BIND_PORT:-2525}:2525"
     environment:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
       ARCHIVE_PATH: "/data/archive"
-      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_LISTEN_HOST: '::'
       SMTP_LISTEN_PORT: "2525"
       SMTP_MAX_MESSAGE_SIZE: ${SMTP_MAX_MESSAGE_SIZE:-31457280}
       PYTHONUNBUFFERED: "1"

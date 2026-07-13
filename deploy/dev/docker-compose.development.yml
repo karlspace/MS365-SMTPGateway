@@ -99,7 +99,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in deploy/dev/.env}
       DATABASE_URL: "sqlite+aiosqlite:////data/relay.db"
       ARCHIVE_PATH: "/data/archive"
-      SMTP_LISTEN_HOST: "0.0.0.0"
+      SMTP_LISTEN_HOST: '::'
       SMTP_TLS_CERT: "/etc/smtp-relay/certs/fullchain.pem"
       SMTP_TLS_KEY: "/etc/smtp-relay/certs/privkey.pem"
       PYTHONUNBUFFERED: "1"

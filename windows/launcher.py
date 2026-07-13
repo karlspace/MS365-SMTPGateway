@@ -109,8 +109,8 @@ def apply_windows_defaults(home: Path) -> None:
         "DATABASE_URL", f"sqlite+aiosqlite:///{db_path}"
     )
     os.environ.setdefault("ARCHIVE_PATH", str(data_dir / "archive"))
-    os.environ.setdefault("SMTP_LISTEN_HOST", "0.0.0.0")  # nosec B104 - LAN relay default; user-overridable
-    os.environ.setdefault("SMTP_LISTEN_PORT", "2525")
+    os.environ.setdefault("SMTP_LISTEN_HOST", '::')  # nosec B104 - LAN relay default; user-overridable
+    os.environ.setdefault("SMTP_LISTEN_PORT", "25")
 
 
 def _ensure_data_dirs(home: Path) -> None:
@@ -175,7 +175,7 @@ def cmd_ui(_args: argparse.Namespace) -> int:
     allow_lan = os.environ.get("SMTP_UI_ALLOW_LAN", "1").strip().lower() not in (
         "0", "false", "no", "",
     )
-    default_host = "0.0.0.0" if allow_lan else "127.0.0.1"  # nosec B104 - guarded by PrivateNetworkOnlyMiddleware
+    default_host = '::' if allow_lan else "127.0.0.1"  # nosec B104 - guarded by PrivateNetworkOnlyMiddleware
     host = os.environ.get("SMTP_UI_HOST", default_host)
     port = int(os.environ.get("SMTP_UI_PORT", "8000"))
 
