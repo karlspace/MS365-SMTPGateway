@@ -113,10 +113,14 @@ def create_app() -> FastAPI:
             return RedirectResponse("/dashboard", status_code=303)
         return RedirectResponse("/login", status_code=303)
 
-    # Liveness probe for nginx / orchestrators — no auth, no DB call.
+    # Liveness probe for nginx / orchestrators — no auth, no DB round-trip,
+    # so it stays green even if the DB layer is saturated. We DO surface the
+    # connection-pool status string (pure in-memory counters, no I/O): if the
+    # panel ever hangs while this probe still answers, an operator can read
+    # the pool state straight from the probe instead of guessing.
     @app.get("/healthz", include_in_schema=False)
     async def _healthz():
-        return {"status": "ok"}
+        return {"status": "ok", "pool": get_engine().pool.status()}
 
     # Uniform error pages for common statuses.
     @app.exception_handler(StarletteHTTPException)
