@@ -91,7 +91,7 @@ services:
       resources:
         limits:
           cpus: "${UI_CPUS:-1.0}"
-          memory: ${UI_MEMORY:-384M}
+          memory: ${UI_MEMORY:-512M}
     networks:
       - local
       - proxy
