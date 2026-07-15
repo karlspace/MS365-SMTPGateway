@@ -2,7 +2,7 @@
 # Trivy ignore list — accepted base-image vulnerabilities
 # =============================================================================
 # These CVEs originate from the Debian bookworm base of python:3.12-slim-bookworm
-# (shared by the relay and ui images). All four have NO fixed Debian version
+# (shared by the relay and ui images). All five have NO fixed Debian version
 # available, so they cannot be resolved by patching, `apt-get upgrade`, or
 # rebasing onto a newer base-image digest. They are accepted as documented risk.
 #
@@ -27,6 +27,18 @@ CVE-2026-8376
 # perl-base — path traversal in Archive::Tar via crafted symlinks.
 # Debian status: fix_deferred (no fix yet). relay/ui do not use Archive::Tar.
 CVE-2026-42496
+
+# perl-base — 16-bit overflow in Perl_study_chunk: an alternation of more than
+# 65535 fixed-string branches compiled into a trie silently truncates the match
+# table, yielding false positive/negative matches. Rated CRITICAL because it can
+# undermine regex-based access control — in Perl code.
+# Not applicable: nothing in relay/ui executes Perl at all; perl-base is only a
+# transitive part of the Debian base image (the Alpine-based nginx image carries
+# no perl and scans clean). Reaching the defect would additionally require a
+# regex with >65535 fixed-string branches, which exists nowhere here.
+# Fixed upstream in Perl 5.43.10; Debian bookworm is unfixed and so is sid, so
+# no base-image digest bump or apt upgrade can resolve it.
+CVE-2026-13221
 
 # libsqlite3-0 — SQLite integer overflow. Status: affected, no fixed Debian
 # version available. Re-evaluate on next review once Debian ships a patch.
