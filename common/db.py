@@ -29,11 +29,15 @@ def _apply_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
     """Apply per-connection PRAGMAs to every new SQLite connection.
 
     ``journal_mode=WAL`` is a persistent, DB-level property, but
-    ``synchronous`` and ``foreign_keys`` are reset to their defaults on
-    *every* new connection. With ``NullPool`` a fresh connection is
-    opened per session, so these must be (re)applied here rather than
-    once at startup — otherwise foreign-key enforcement would silently be
-    off for all request-serving connections.
+    ``synchronous`` and ``foreign_keys`` are per-connection and reset to
+    the SQLite defaults on every new one. Since NullPool opens a fresh
+    connection per session, applying them once at startup is not enough:
+    ``synchronous`` would silently fall back to FULL, quietly undoing the
+    WAL/NORMAL trade-off this engine is configured for.
+
+    ``foreign_keys=ON`` has no effect on the current schema, which
+    declares no foreign keys — it is set so enforcement is correct by
+    construction if any are ever added.
     """
     cursor = dbapi_connection.cursor()
     try:
