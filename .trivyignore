@@ -4,7 +4,9 @@
 # These CVEs originate from the Debian bookworm base of python:3.12-slim-bookworm
 # (shared by the relay and ui images). All six have NO fixed Debian version
 # available, so they cannot be resolved by patching, `apt-get upgrade`, or
-# rebasing onto a newer base-image digest. They are accepted as documented risk.
+# rebasing onto a newer base-image digest. They are accepted as documented risk —
+# the "Known Accepted Risks" table in SECURITY.md carries the full rationale and
+# is kept in sync with this list.
 #
 # Trivy auto-loads this file from the working directory (repo checkout root);
 # the fork-docker-build reusable workflow runs `trivy image` there, so listed
