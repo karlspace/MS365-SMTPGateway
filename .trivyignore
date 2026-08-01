@@ -2,7 +2,7 @@
 # Trivy ignore list — accepted base-image vulnerabilities
 # =============================================================================
 # These CVEs originate from the Debian bookworm base of python:3.12-slim-bookworm
-# (shared by the relay and ui images). All five have NO fixed Debian version
+# (shared by the relay and ui images). All six have NO fixed Debian version
 # available, so they cannot be resolved by patching, `apt-get upgrade`, or
 # rebasing onto a newer base-image digest. They are accepted as documented risk.
 #
@@ -43,3 +43,15 @@ CVE-2026-13221
 # libsqlite3-0 — SQLite integer overflow. Status: affected, no fixed Debian
 # version available. Re-evaluate on next review once Debian ships a patch.
 CVE-2025-7458
+
+# perl-base — signed integer overflow in Storable (< 3.41): deserializing a
+# crafted SX_HOOK record panics. Rated CRITICAL because Storable::thaw on
+# attacker-controlled blobs is a classic deserialization sink — in Perl code.
+# Not applicable: same reasoning as CVE-2026-13221 — nothing in relay/ui
+# executes Perl, and no Storable blob (trusted or not) is ever deserialized;
+# perl-base is only a transitive part of the Debian base image.
+# Debian bookworm ships 5.36.0-7+deb12u3 and is unfixed; trixie is unfixed too.
+# Only sid/forky (perl 5.42.2-3) carries the fix, so no digest bump or
+# apt-get upgrade on a bookworm base can resolve it.
+# Added: 2026-08-01
+CVE-2026-57433
