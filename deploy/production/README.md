@@ -25,8 +25,8 @@ ports are published straight to the host and do not traverse the HTTP proxy.
 ## Images
 
 ```
-ghcr.io/karlspace/ms365-smtpgateway/ui:${IMAGE_TAG}
-ghcr.io/karlspace/ms365-smtpgateway/relay:${IMAGE_TAG}
+ghcr.io/mirrored-projects/ms365-smtpgateway/ui:${IMAGE_TAG}
+ghcr.io/mirrored-projects/ms365-smtpgateway/relay:${IMAGE_TAG}
 ```
 
 `IMAGE_TAG` defaults to `latest` (HEAD of the `workspace` branch). **Pin an

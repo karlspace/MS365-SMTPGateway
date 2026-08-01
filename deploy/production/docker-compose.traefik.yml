@@ -48,7 +48,7 @@ services:
   # ---------------------------------------------------------------------------
   ui:
     <<: [*logging, *hardening]
-    image: ghcr.io/karlspace/ms365-smtpgateway/ui:${IMAGE_TAG:-latest}
+    image: ghcr.io/mirrored-projects/ms365-smtpgateway/ui:${IMAGE_TAG:-latest}
     # Force a registry roundtrip on redeploy so moving tags (latest/workspace)
     # actually refresh instead of reusing the locally cached layer.
     pull_policy: always
@@ -139,7 +139,7 @@ services:
   # ---------------------------------------------------------------------------
   relay:
     <<: [*logging, *hardening]
-    image: ghcr.io/karlspace/ms365-smtpgateway/relay:${IMAGE_TAG:-latest}
+    image: ghcr.io/mirrored-projects/ms365-smtpgateway/relay:${IMAGE_TAG:-latest}
     pull_policy: always
     container_name: ${STACK_NAME:-smtp-relay}_RELAY
     hostname: smtp-relay-smtp

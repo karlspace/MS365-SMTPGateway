@@ -46,7 +46,7 @@ services:
   # ── Admin panel (plain HTTP on the LAN) ────────────────────────────────────
   ui:
     <<: [*logging, *hardening]
-    image: ghcr.io/karlspace/ms365-smtpgateway/ui:${IMAGE_TAG:-latest}
+    image: ghcr.io/mirrored-projects/ms365-smtpgateway/ui:${IMAGE_TAG:-latest}
     pull_policy: always
     container_name: ${STACK_NAME:-smtp-relay}_UI
     hostname: smtp-relay-ui
@@ -98,7 +98,7 @@ services:
   # ---------------------------------------------------------------------------
   relay:
     <<: [*logging, *hardening]
-    image: ghcr.io/karlspace/ms365-smtpgateway/relay:${IMAGE_TAG:-latest}
+    image: ghcr.io/mirrored-projects/ms365-smtpgateway/relay:${IMAGE_TAG:-latest}
     pull_policy: always
     container_name: ${STACK_NAME:-smtp-relay}_RELAY
     hostname: smtp-relay-smtp
